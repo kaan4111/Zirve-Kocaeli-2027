@@ -248,5 +248,4 @@ http.createServer(async (req, res) => {
       console.error(e); 
       return send(res, 500, { error: 'Sunucu hatası.' }, req); 
     } 
-  }
-}).listen(PORT, () => console.log(`ZİRVE HUB http://localhost:${PORT}`));
+  }}).listen(PORT, '0.0.0.0', () => console.log(`ZİRVE HUB http://localhost:${PORT}`));
