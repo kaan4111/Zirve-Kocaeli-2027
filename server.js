@@ -1,4 +1,4 @@
-use strict';
+'use strict';
 // ZİRVE HUB sunucusu: bağımlılıksız Node.js (22.5+) + yerleşik SQLite.
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
