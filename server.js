@@ -1,4 +1,4 @@
-'use strict';
+use strict';
 // ZİRVE HUB sunucusu: bağımlılıksız Node.js (22.5+) + yerleşik SQLite.
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
@@ -211,19 +211,42 @@ r('GET', '/api/admin/audit', ({ u, url }) => {
 const HDR = { 'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'", 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'Cache-Control': 'no-store' };
 const FILES = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
 const body = req => new Promise((res, rej) => { let n = 0; const c = []; req.on('data', d => { n += d.length; if (n > 3e6) { rej(new HttpErr(413, 'İstek çok büyük.')); req.destroy(); } else c.push(d); }); req.on('end', () => { try { res(c.length ? JSON.parse(Buffer.concat(c)) : {}); } catch { rej(new HttpErr(400, 'Geçersiz JSON.')); } }); });
-const send = (res, code, o, req) => { const h = { ...HDR, 'Content-Type': 'application/json; charset=utf-8' }; if (req && req.setCookie) h['Set-Cookie'] = req.setCookie; res.writeHead(code, h); res.end(JSON.stringify(o)); };
+const send = (res, code, o, req) => {
+  if (res.headersSent) return;
+  const h = { ...HDR, 'Content-Type': 'application/json; charset=utf-8' };
+  if (req && req.setCookie) h['Set-Cookie'] = req.setCookie;
+  res.writeHead(code, h);
+  res.end(JSON.stringify(o));
+};
+
 http.createServer(async (req, res) => {
-  req.ip = req.socket.remoteAddress; const url = new URL(req.url, 'http://x');
+  req.ip = req.socket.remoteAddress; 
+  const url = new URL(req.url, 'http://x');
   try {
     if (!url.pathname.startsWith('/api/')) {
-      const f = FILES[url.pathname]; if (!f) { res.writeHead(404, HDR); return res.end('Not found'); }
-      res.writeHead(200, { ...HDR, 'Content-Type': f[1] }); return res.end(fs.readFileSync(path.join(__dirname, 'public', f[0])));
+      const f = FILES[url.pathname]; 
+      if (!f) { 
+        if (!res.headersSent) res.writeHead(404, HDR); 
+        return res.end('Not found'); 
+      }
+      if (!res.headersSent) res.writeHead(200, { ...HDR, 'Content-Type': f[1] }); 
+      return res.end(fs.readFileSync(path.join(__dirname, 'public', f[0])));
     }
     if (req.method !== 'GET' && req.headers['x-zh'] !== '1') bad('Geçersiz istek.', 403);
-    const hit = R.find(x => x[0] === req.method && x[1].test(url.pathname)); if (!hit) bad('Bulunamadı.', 404);
-    const u = auth(req); if (!hit[3] && !u) bad('Oturum gerekli.', 401);
+    const hit = R.find(x => x[0] === req.method && x[1].test(url.pathname)); 
+    if (!hit) bad('Bulunamadı.', 404);
+    const u = auth(req); 
+    if (!hit[3] && !u) bad('Oturum gerekli.', 401);
     if (u && u.must_change && !['/api/me', '/api/me/password', '/api/logout'].includes(url.pathname)) bad('Önce şifreni değiştirmelisin.', 403, { must_change: true });
     const b = req.method === 'GET' ? {} : await body(req), m = hit[1].exec(url.pathname);
-    send(res, 200, hit[2]({ u, b, req, url, p: m.slice(1) }), req);
-  } catch (e) { if (e instanceof HttpErr) send(res, e.c, { error: e.message, ...e.x }); else { console.error(e); send(res, 500, { error: 'Sunucu hatası.' }); } }
+    return send(res, 200, hit[2]({ u, b, req, url, p: m.slice(1) }), req);
+  } catch (e) { 
+    if (res.headersSent) return;
+    if (e instanceof HttpErr) {
+      return send(res, e.c, { error: e.message, ...e.x }, req);
+    } else { 
+      console.error(e); 
+      return send(res, 500, { error: 'Sunucu hatası.' }, req); 
+    } 
+  }
 }).listen(PORT, () => console.log(`ZİRVE HUB http://localhost:${PORT}`));
